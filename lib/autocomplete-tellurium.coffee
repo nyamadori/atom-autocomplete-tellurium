@@ -1,10 +1,13 @@
 AutocompleteTelluriumView = require './autocomplete-tellurium-view'
 {CompositeDisposable} = require 'atom'
+socketIO = require('socket.io-client')
 
 module.exports = AutocompleteTellurium =
   autocompleteTelluriumView: null
   modalPanel: null
   subscriptions: null
+  capturing: false
+  io: null
 
   activate: (state) ->
     @autocompleteTelluriumView = new AutocompleteTelluriumView(state.autocompleteTelluriumViewState)
@@ -22,6 +25,13 @@ module.exports = AutocompleteTellurium =
       'autocomplete-tellurium:complete': =>
         @complete()
 
+    @io = socketIO('http://localhost:9000')
+    @io.on 'connect', =>
+      console.log "Socket ID: #{@io.id}"
+
+    @io.on 'complete', (data) =>
+      console.log data
+
   deactivate: ->
     @modalPanel.destroy()
     @subscriptions.dispose()
@@ -30,9 +40,21 @@ module.exports = AutocompleteTellurium =
   serialize: ->
     autocompleteTelluriumViewState: @autocompleteTelluriumView.serialize()
 
+  startCapture: ->
+    @io.emit('createSession', {message: 'createSession'})
+    @capturing = true
+
+  endCapture: ->
+    @io.emit('destroySession', {message: 'destroySession'})
+    @capturing = false
+
   toggleCapture: ->
-    console.log 'AutocompleteTellurium was toggled!'
-    atom.workspace.open(null, split: 'down')
+    if @capturing
+      @endCapture()
+      @capturing = false
+    else
+      @startCapture()
+      @capturing = true
 
   complete: ->
     console.log 'AutocompleteTellurium was completed!'

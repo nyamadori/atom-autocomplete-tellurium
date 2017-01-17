@@ -8,6 +8,8 @@ module.exports = AutocompleteTellurium =
   subscriptions: null
   capturing: false
   io: null
+  sessionId: null
+  editor: null
 
   activate: (state) ->
     @autocompleteTelluriumView = new AutocompleteTelluriumView(state.autocompleteTelluriumViewState)
@@ -24,13 +26,19 @@ module.exports = AutocompleteTellurium =
     @subscriptions.add atom.commands.add 'atom-workspace',
       'autocomplete-tellurium:complete': =>
         @complete()
+    @subscriptions.add atom.commands.add 'atom-workspace',
+      'autocomplete-tellurium:sessionId': =>
+        console.log(this.sessionId)
+
+    atom.workspace.observeTextEditors (editor) =>
+      @editor = editor
 
     @io = socketIO('http://localhost:9000')
     @io.on 'connect', =>
       console.log "Socket ID: #{@io.id}"
 
     @io.on 'complete', (data) =>
-      console.log data
+      @editor.insertText(data.code)
 
   deactivate: ->
     @modalPanel.destroy()
@@ -41,11 +49,13 @@ module.exports = AutocompleteTellurium =
     autocompleteTelluriumViewState: @autocompleteTelluriumView.serialize()
 
   startCapture: ->
-    @io.emit('createSession', {message: 'createSession'})
+    @io.emit 'createSession', generator: 'capybara', (res) =>
+      @sessionId = res.sessionId
+
     @capturing = true
 
   endCapture: ->
-    @io.emit('destroySession', {message: 'destroySession'})
+    @io.emit('destroySession', {message: 'destroySession', sessionId: @sessionId})
     @capturing = false
 
   toggleCapture: ->

@@ -5,7 +5,10 @@
   "description": "A short description of your package",
   "keywords": [],
   "activationCommands": {
-    "atom-workspace": "autocomplete-tellurium:toggle-capture"
+    "atom-workspace": [
+      "autocomplete-tellurium:toggle-capture",
+      "autocomplete-tellurium:sessionId"
+    ]
   },
   "consumedServices": {
     "status-bar": {

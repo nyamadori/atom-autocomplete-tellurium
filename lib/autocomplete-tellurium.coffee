@@ -1,44 +1,56 @@
 AutocompleteTelluriumView = require './autocomplete-tellurium-view'
-{CompositeDisposable} = require 'atom'
+{CompositeDisposable, Directory} = require 'atom'
 socketIO = require('socket.io-client')
+minimatch = require('minimatch')
+path = require('path')
 
 module.exports = AutocompleteTellurium =
   autocompleteTelluriumView: null
   modalPanel: null
   subscriptions: null
-  capturing: false
+  enabled: false
   io: null
-  sessionId: null
-  editor: null
 
   activate: (state) ->
     @autocompleteTelluriumView = new AutocompleteTelluriumView(state.autocompleteTelluriumViewState)
-    # @modalPanel = atom.workspace.addModalPanel(item: @autocompleteTelluriumView.getElement(), visible: false)
-
-    # Events subscribed to in atom's system can be easily cleaned up with a CompositeDisposable
     @subscriptions = new CompositeDisposable
 
-    # Register command that toggles this view
-    @subscriptions.add atom.commands.add 'atom-workspace',
-      'autocomplete-tellurium:toggle-capture': =>
-        @toggleCapture()
-
-    @subscriptions.add atom.commands.add 'atom-workspace',
-      'autocomplete-tellurium:complete': =>
-        @complete()
-    @subscriptions.add atom.commands.add 'atom-workspace',
-      'autocomplete-tellurium:sessionId': =>
-        console.log(this.sessionId)
-
-    atom.workspace.observeTextEditors (editor) =>
-      @editor = editor
-
     @io = socketIO('http://localhost:9000')
+
+    atom.commands.add 'atom-text-editor',
+      'tellurium:enable-complete': =>
+        @enabled = true
+      'tellurium:disable-complete': =>
+        @enabled = false
+
+    atom.workspace.onDidStopChangingActivePaneItem (item) =>
+      configFile = @getConfigFile(item.getPath())
+      return unless configFile
+
+      @readConfig(configFile)
+        .then (config) =>
+          @io.emit('createSession', { configFile: configFile.getPath(), config: config })
+        .catch (e) => console.error(e)
+
     @io.on 'connect', =>
       console.log "Socket ID: #{@io.id}"
 
     @io.on 'complete', (data) =>
-      @editor.insertText(data.code)
+      return unless @enabled
+
+      activeEditor = atom.workspace.getActiveTextEditor()
+      activeEditorPath = activeEditor.getPath()
+      configFile = @getConfigFile(activeEditorPath)
+
+      @readConfig(configFile)
+        .then (config) =>
+          for filePattern in config.files
+            filePattern =
+              path.join(configFile.getParent().getPath(), filePattern)
+
+            if minimatch(activeEditorPath, filePattern)
+              activeEditor.insertText(data.code)
+              activeEditor.insertNewline()
 
   deactivate: ->
     @modalPanel.destroy()
@@ -48,24 +60,29 @@ module.exports = AutocompleteTellurium =
   serialize: ->
     autocompleteTelluriumViewState: @autocompleteTelluriumView.serialize()
 
-  startCapture: ->
-    @io.emit 'createSession', generator: 'capybara', (res) =>
-      @sessionId = res.sessionId
+  getConfigFile: (path) ->
+    dir = new Directory(path)
+    configFile = null
 
-    @capturing = true
+    while !dir.isRoot()
+      dir = dir.getParent()
+      tempFile = dir.getFile('.tellurium')
 
-  endCapture: ->
-    @io.emit('destroySession', {message: 'destroySession', sessionId: @sessionId})
-    @capturing = false
+      if tempFile.existsSync() && tempFile.isFile()
+        configFile = tempFile
+        break
 
-  toggleCapture: ->
-    if @capturing
-      @endCapture()
-      @capturing = false
-    else
-      @startCapture()
-      @capturing = true
+    configFile
 
-  complete: ->
-    console.log 'AutocompleteTellurium was completed!'
-    # engine に補完リクエストを送信
+  normalizeConfig: (rawConfig) ->
+    normalized = Object.assign({}, rawConfig)
+    normalized.files = [].concat(normalized.files)
+    normalized
+
+  readConfig: (file) ->
+    new Promise (resolveCb, rejectCb) =>
+      read = (data) => resolveCb(@normalizeConfig(JSON.parse(data)))
+
+      file
+        .read(false)
+        .then(read, rejectCb)

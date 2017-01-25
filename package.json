@@ -4,19 +4,6 @@
   "version": "0.0.0",
   "description": "A short description of your package",
   "keywords": [],
-  "activationCommands": {
-    "atom-workspace": [
-      "autocomplete-tellurium:toggle-capture",
-      "autocomplete-tellurium:sessionId"
-    ]
-  },
-  "consumedServices": {
-    "status-bar": {
-      "versions": {
-        "^1.0.0": "consumeStatusBar"
-      }
-    }
-  },
   "repository": "https://github.com/atom/autocomplete-tellurium",
   "license": "MIT",
   "engines": {

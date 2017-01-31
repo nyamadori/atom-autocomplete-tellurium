@@ -24,6 +24,8 @@ module.exports = AutocompleteTellurium =
         @enabled = false
 
     atom.workspace.onDidStopChangingActivePaneItem (item) =>
+      return unless item.getPath()
+
       configFile = @getConfigFile(item.getPath())
       return unless configFile
 

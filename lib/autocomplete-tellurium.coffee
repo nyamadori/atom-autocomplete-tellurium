@@ -15,7 +15,7 @@ module.exports = AutocompleteTellurium =
     @autocompleteTelluriumView = new AutocompleteTelluriumView(state.autocompleteTelluriumViewState)
     @subscriptions = new CompositeDisposable
 
-    @io = socketIO('http://localhost:9000')
+    @io = socketIO('http://localhost:10000')
 
     atom.commands.add 'atom-text-editor',
       'tellurium:enable-complete': =>

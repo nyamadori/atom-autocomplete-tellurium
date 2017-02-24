@@ -1,10 +1,15 @@
 class AutocompleteTelluriumView extends HTMLElement
   init: ->
-    @classList.add('tellurium-view')
-    @classList.add('inline-block')
+    @classList.add('tellurium-view', 'inline-block')
+    @disable()
 
-  setStatus: (status) ->
-    @textContent = status
+  enable: ->
+    @classList.add('status-enable')
+    @textContent = 'Tellurium: On'
+
+  disable: ->
+    @classList.remove('status-enable')
+    @textContent = 'Tellurium: Off'
 
 module.exports =
   document.registerElement 'tellurium-status',

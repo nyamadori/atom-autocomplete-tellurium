@@ -1,10 +1,12 @@
-AutocompleteTelluriumView = require './autocomplete-tellurium-view'
-{CompositeDisposable, Directory} = require 'atom'
+{CompositeDisposable, Directory} = require('atom')
 socketIO = require('socket.io-client')
 minimatch = require('minimatch')
 path = require('path')
+AutocompleteTelluriumView = require('./autocomplete-tellurium-view')
+Target = require('./target')
 
 module.exports = AutocompleteTellurium =
+  active: false
   enabled: false
   targets: []
 
@@ -13,13 +15,12 @@ module.exports = AutocompleteTellurium =
     @io = socketIO('http://localhost:10000')
     @telluriumView = new AutocompleteTelluriumView
     @telluriumView.init()
-    @telluriumView.setStatus('Tellurium: On')
 
     atom.commands.add 'atom-text-editor',
       'tellurium:enable-complete': =>
-        @enabled = true
+        @enable()
       'tellurium:disable-complete': =>
-        @enabled = false
+        @disable()
 
     atom.workspace.observeTextEditors (editor) =>
       file = @retrieveConfigFile(editor.getPath())
@@ -27,9 +28,10 @@ module.exports = AutocompleteTellurium =
 
       @targetFromFile(file)
         .then(@registerTarget.bind(this))
+        .then(@showStatusTile.bind(this))
 
-    atom.workspace.observeActivePaneItem (item) =>
-      console.log(item.getPath())
+    atom.workspace.onDidChangeActivePaneItem (item) =>
+      @showStatusTile()
 
     @io.on 'connect', =>
       console.log "Connected to socket (#{@io.id})"
@@ -49,9 +51,29 @@ module.exports = AutocompleteTellurium =
     @telluriumTile?.destroy()
 
   consumeStatusBar: (statusBar) ->
-    console.log(statusBar)
-    @telluriumTile = statusBar.addLeftTile
-      item: @telluriumView, priority: -1
+    @statusBar = statusBar
+
+  enable: ->
+    @enabled = true
+    @telluriumView?.enable()
+
+  disable: ->
+    @enabled = false
+    @telluriumView?.disable()
+
+  showStatusTile: ->
+    activeEditor = atom.workspace.getActiveTextEditor()
+    path = activeEditor.getPath()
+    target = @getTarget(path)
+    return unless target
+
+    @active = target.isTargetFile(path)
+
+    if @active
+      @telluriumTile = @statusBar.addLeftTile
+        item: @telluriumView, priority: -1
+    else
+      @telluriumTile?.destroy()
 
   retrieveConfigFile: (path) ->
     dir = new Directory(path)
@@ -69,20 +91,9 @@ module.exports = AutocompleteTellurium =
 
   targetFromFile: (file) ->
     new Promise (resolve, reject) =>
-      return reject('File is ' + file) unless file
+      return reject('Given file is ' + file) unless file
 
-      target = {}
-
-      @readJsonFile(file)
-        .then (json) =>
-          target.config = json
-          target.configFile = file
-
-          file.onDidChange =>
-            @readJsonFile(file)
-              .then (json) => target.config = json
-
-          resolve(target)
+      Target.loadFromFile(file).then(resolve)
 
   registerTarget: (target) ->
     @targets ?= []
@@ -98,15 +109,6 @@ module.exports = AutocompleteTellurium =
 
     @targets.find (t) -> t.configFile.getPath() == file.getPath()
 
-  readJsonFile: (file) ->
-    new Promise (resolve, reject) =>
-      parseJSON = (data) => resolve(JSON.parse(data))
-
-      file
-        .read(false)
-        .then(parseJSON)
-        .catch(reject)
-
   notifyServer: (target) ->
     @io.emit('createSession', { configFile: target.configFile.getPath(), config: target.config })
 
@@ -115,11 +117,6 @@ module.exports = AutocompleteTellurium =
     target = @getTarget(codePath)
     return unless target
 
-    { config, configFile } = target
-
-    config.files.some (file) =>
-      filePattern = path.join(configFile.getParent().getPath(), file)
-
-      if minimatch(codePath, filePattern) && minimatch(completionInfo.url, config.url)
-        editor.insertText(completionInfo.code, autoIndent: true)
-        editor.insertNewline()
+    if target.isTarget(completionInfo.url, codePath)
+      editor.insertText(completionInfo.code, autoIndent: true)
+      editor.insertNewline()

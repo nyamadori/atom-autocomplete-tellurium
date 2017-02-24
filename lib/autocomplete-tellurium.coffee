@@ -26,7 +26,7 @@ module.exports = AutocompleteTellurium =
       file = @retrieveConfigFile(editor.getPath())
       return unless file
 
-      @targetFromFile(file)
+      Target.loadFromFile(file)
         .then(@registerTarget.bind(this))
         .then(@showStatusTile.bind(this))
 
@@ -89,17 +89,14 @@ module.exports = AutocompleteTellurium =
 
     configFile
 
-  targetFromFile: (file) ->
-    new Promise (resolve, reject) =>
-      return reject('Given file is ' + file) unless file
-
-      Target.loadFromFile(file).then(resolve)
-
   registerTarget: (target) ->
     @targets ?= []
     existing = @targets.find (t) -> t.configFile.getPath() == target.configFile.getPath()
 
     unless existing
+      target.onDidChangeConfig =>
+        @notifyServer(target)
+
       @targets.push(target)
       @notifyServer(target)
 

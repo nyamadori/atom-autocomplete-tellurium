@@ -23,19 +23,14 @@ module.exports = AutocompleteTellurium =
       'tellurium:disable-complete': =>
         @enabled = false
 
-    atom.workspace.onDidStopChangingActivePaneItem (item) =>
-      return unless item.getPath()
-
-      configFile = @getConfigFile(item.getPath())
-      return unless configFile
-
-      @readConfig(configFile)
-        .then (config) =>
-          @io.emit('createSession', { configFile: configFile.getPath(), config: config })
-        .catch (e) => console.error(e)
+    atom.workspace.observeTextEditors (editor) =>
+      @notifyServer(editor)
 
     @io.on 'connect', =>
-      console.log "Socket ID: #{@io.id}"
+      console.log "Connected to socket (#{@io.id})"
+
+      for editor in atom.workspace.getTextEditors()
+        @notifyServer(editor)
 
     @io.on 'complete', (data) =>
       return unless @enabled
@@ -82,9 +77,20 @@ module.exports = AutocompleteTellurium =
     normalized
 
   readConfig: (file) ->
-    new Promise (resolveCb, rejectCb) =>
-      read = (data) => resolveCb(@normalizeConfig(JSON.parse(data)))
+    new Promise (resolve, reject) =>
+      read = (data) => resolve(@normalizeConfig(JSON.parse(data)))
 
       file
         .read(false)
-        .then(read, rejectCb)
+        .then(read, reject)
+
+  notifyServer: (editor) ->
+    new Promise (resolve, reject) =>
+      configFile = @getConfigFile(editor.getPath())
+      return resolve() unless configFile
+
+      @readConfig(editor)
+        .then (config) =>
+          @io.emit('createSession', { configFile: configFile.getPath(), config: config })
+          resolve()
+        .catch(reject)

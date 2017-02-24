@@ -85,7 +85,6 @@ module.exports = AutocompleteTellurium =
 
     @readConfig(configFile)
       .then (config) =>
-        console.log(completionInfo, completionInfo.url, config.url)
         for filePattern in config.files
           filePattern =
             path.join(configFile.getParent().getPath(), filePattern)

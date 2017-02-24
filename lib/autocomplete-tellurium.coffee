@@ -5,17 +5,15 @@ minimatch = require('minimatch')
 path = require('path')
 
 module.exports = AutocompleteTellurium =
-  autocompleteTelluriumView: null
-  modalPanel: null
-  subscriptions: null
   enabled: false
-  io: null
+  targets: []
 
   activate: (state) ->
-    @autocompleteTelluriumView = new AutocompleteTelluriumView(state.autocompleteTelluriumViewState)
     @subscriptions = new CompositeDisposable
-
     @io = socketIO('http://localhost:10000')
+    @telluriumView = new AutocompleteTelluriumView
+    @telluriumView.init()
+    @telluriumView.setStatus('Tellurium: On')
 
     atom.commands.add 'atom-text-editor',
       'tellurium:enable-complete': =>
@@ -24,13 +22,19 @@ module.exports = AutocompleteTellurium =
         @enabled = false
 
     atom.workspace.observeTextEditors (editor) =>
-      @notifyServer(editor)
+      file = @retrieveConfigFile(editor.getPath())
+      return unless file
+
+      @targetFromFile(file)
+        .then(@registerTarget.bind(this))
+
+    atom.workspace.observeActivePaneItem (item) =>
+      console.log(item.getPath())
 
     @io.on 'connect', =>
       console.log "Connected to socket (#{@io.id})"
 
-      for editor in atom.workspace.getTextEditors()
-        @notifyServer(editor)
+      @targets.forEach (target) => @notifyServer(target)
 
     @io.on 'complete', (data) =>
       return unless @enabled
@@ -41,12 +45,15 @@ module.exports = AutocompleteTellurium =
   deactivate: ->
     @modalPanel.destroy()
     @subscriptions.dispose()
-    @autocompleteTelluriumView.destroy()
+    @telluriumView.destroy()
+    @telluriumTile?.destroy()
 
-  serialize: ->
-    autocompleteTelluriumViewState: @autocompleteTelluriumView.serialize()
+  consumeStatusBar: (statusBar) ->
+    console.log(statusBar)
+    @telluriumTile = statusBar.addLeftTile
+      item: @telluriumView, priority: -1
 
-  getConfigFile: (path) ->
+  retrieveConfigFile: (path) ->
     dir = new Directory(path)
     configFile = null
 
@@ -60,35 +67,59 @@ module.exports = AutocompleteTellurium =
 
     configFile
 
-  readConfig: (file) ->
+  targetFromFile: (file) ->
     new Promise (resolve, reject) =>
-      read = (data) => resolve(JSON.parse(data))
+      return reject('File is ' + file) unless file
+
+      target = {}
+
+      @readJsonFile(file)
+        .then (json) =>
+          target.config = json
+          target.configFile = file
+
+          file.onDidChange =>
+            @readJsonFile(file)
+              .then (json) => target.config = json
+
+          resolve(target)
+
+  registerTarget: (target) ->
+    @targets ?= []
+    existing = @targets.find (t) -> t.configFile.getPath() == target.configFile.getPath()
+
+    unless existing
+      @targets.push(target)
+      @notifyServer(target)
+
+  getTarget: (path) ->
+    file = @retrieveConfigFile(path)
+    return unless file
+
+    @targets.find (t) -> t.configFile.getPath() == file.getPath()
+
+  readJsonFile: (file) ->
+    new Promise (resolve, reject) =>
+      parseJSON = (data) => resolve(JSON.parse(data))
 
       file
         .read(false)
-        .then(read, reject)
-
-  notifyServer: (editor) ->
-    new Promise (resolve, reject) =>
-      configFile = @getConfigFile(editor.getPath())
-      return resolve() unless configFile
-
-      @readConfig(configFile)
-        .then (config) =>
-          @io.emit('createSession', { configFile: configFile.getPath(), config: config })
-          resolve()
+        .then(parseJSON)
         .catch(reject)
 
+  notifyServer: (target) ->
+    @io.emit('createSession', { configFile: target.configFile.getPath(), config: target.config })
+
   complete: (editor, completionInfo) ->
-    codeFile = editor.getPath()
-    configFile = @getConfigFile(codeFile)
+    codePath = editor.getPath()
+    target = @getTarget(codePath)
+    return unless target
 
-    @readConfig(configFile)
-      .then (config) =>
-        for filePattern in config.files
-          filePattern =
-            path.join(configFile.getParent().getPath(), filePattern)
+    { config, configFile } = target
 
-          if minimatch(codeFile, filePattern) && minimatch(completionInfo.url, config.url)
-            editor.insertText(completionInfo.code, autoIndent: true)
-            editor.insertNewline()
+    config.files.some (file) =>
+      filePattern = path.join(configFile.getParent().getPath(), file)
+
+      if minimatch(codePath, filePattern) && minimatch(completionInfo.url, config.url)
+        editor.insertText(completionInfo.code, autoIndent: true)
+        editor.insertNewline()

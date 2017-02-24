@@ -12,5 +12,12 @@
   "dependencies": {
     "socket.io": "^1.7.2",
     "socket.io-client": "^1.7.2"
+  },
+  "consumedServices": {
+    "status-bar": {
+      "versions": {
+        "^1.0.0": "consumeStatusBar"
+      }
+    }
   }
 }

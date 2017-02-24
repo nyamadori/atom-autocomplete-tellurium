@@ -35,19 +35,8 @@ module.exports = AutocompleteTellurium =
     @io.on 'complete', (data) =>
       return unless @enabled
 
-      activeEditor = atom.workspace.getActiveTextEditor()
-      activeEditorPath = activeEditor.getPath()
-      configFile = @getConfigFile(activeEditorPath)
-
-      @readConfig(configFile)
-        .then (config) =>
-          for filePattern in config.files
-            filePattern =
-              path.join(configFile.getParent().getPath(), filePattern)
-
-            if minimatch(activeEditorPath, filePattern)
-              activeEditor.insertText(data.code)
-              activeEditor.insertNewline()
+      editor = atom.workspace.getActiveTextEditor()
+      @complete(editor, data)
 
   deactivate: ->
     @modalPanel.destroy()
@@ -71,14 +60,9 @@ module.exports = AutocompleteTellurium =
 
     configFile
 
-  normalizeConfig: (rawConfig) ->
-    normalized = Object.assign({}, rawConfig)
-    normalized.files = [].concat(normalized.files)
-    normalized
-
   readConfig: (file) ->
     new Promise (resolve, reject) =>
-      read = (data) => resolve(@normalizeConfig(JSON.parse(data)))
+      read = (data) => resolve(JSON.parse(data))
 
       file
         .read(false)
@@ -89,8 +73,23 @@ module.exports = AutocompleteTellurium =
       configFile = @getConfigFile(editor.getPath())
       return resolve() unless configFile
 
-      @readConfig(editor)
+      @readConfig(configFile)
         .then (config) =>
           @io.emit('createSession', { configFile: configFile.getPath(), config: config })
           resolve()
         .catch(reject)
+
+  complete: (editor, completionInfo) ->
+    codeFile = editor.getPath()
+    configFile = @getConfigFile(codeFile)
+
+    @readConfig(configFile)
+      .then (config) =>
+        console.log(completionInfo, completionInfo.url, config.url)
+        for filePattern in config.files
+          filePattern =
+            path.join(configFile.getParent().getPath(), filePattern)
+
+          if minimatch(codeFile, filePattern) && minimatch(completionInfo.url, config.url)
+            editor.insertText(completionInfo.code, autoIndent: true)
+            editor.insertNewline()

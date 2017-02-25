@@ -76,6 +76,8 @@ module.exports = AutocompleteTellurium =
       @telluriumTile?.destroy()
 
   retrieveConfigFile: (path) ->
+    return unless path
+    
     dir = new Directory(path)
     configFile = null
 

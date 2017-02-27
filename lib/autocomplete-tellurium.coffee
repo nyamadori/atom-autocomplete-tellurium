@@ -63,6 +63,8 @@ module.exports = AutocompleteTellurium =
 
   showStatusTile: ->
     activeEditor = atom.workspace.getActiveTextEditor()
+    return unless activeEditor
+
     path = activeEditor.getPath()
     target = @getTarget(path)
     return unless target
@@ -77,7 +79,7 @@ module.exports = AutocompleteTellurium =
 
   retrieveConfigFile: (path) ->
     return unless path
-    
+
     dir = new Directory(path)
     configFile = null
 

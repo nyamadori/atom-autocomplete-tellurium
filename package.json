@@ -1,7 +1,7 @@
 {
   "name": "autocomplete-tellurium",
   "main": "./lib/autocomplete-tellurium",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Tellurium for Atom Editor",
   "keywords": [],
   "repository": "https://github.com/tellurium-project/atom-tellurium",
